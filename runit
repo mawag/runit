@@ -1,0 +1,105 @@
+#!/bin/bash
+
+#init
+RUNIT_VERSION="version 0.1"
+
+PROC_FILE="Procfile"
+ENV_FILE=".env"
+DEFAULT_PORT="8080"
+DATE_FORMAT='+%Y-%m-%d|%H:%M:%S'
+
+#ERROR
+OPTIND_ERROR=10
+PROCFILE_NOT_FOUND=4041
+PROCFILE_CANOT_READ=5021
+
+ENVFILE_NOT_FOUND=4042
+ENVFILE_CANOT_READ=5022
+
+PORT_ERROR=301
+
+
+
+function usage() {
+    echo "Usage: runit [-c] [-f procfile|Procfile] [-e envfile|.env]"
+    echo "Runit Version: $RUNIT_VERSION"
+}
+
+
+
+function readprocfile(){
+    while read line;do
+        
+    done < $PROC_FILE
+}
+
+
+#参数处理校验
+function verify() {
+    while getopts "cf:e:h" opts;
+    do
+        case $opts in
+            c)
+                echo "option:c";;
+            f)
+                echo "option:f, value $OPTARG"
+                if [ -e "$OPTARG" ];then
+                    PROC_FILE=$OPTARG;
+                else
+                    echo "Procfile Not Found"
+                    exit $PROCFILE_NOT_FOUND;
+                fi;;
+            e)
+                echo "option:e, value $OPTARG"
+                if [ -e "$OPTARG" ];then
+                    ENV_FILE=$OPTARG;
+                else
+                    echo "ENV file Not Found"
+                    exit $ENVFILE_NOT_FOUND;
+                fi;;
+            h)
+                usage;
+                exit 0;;
+            \?)
+                usagr;
+                exit $OPTIND_ERROR;;
+        esac
+    done
+}
+
+function log() {
+    
+    #time
+    bash -c "date \"$DATE_FORMAT\""
+    #app name & log
+    
+}
+
+function run_command() {
+    :
+}
+
+function  load_env_file() {
+    echo "Start Load ENV -> $ENV_FILE"
+    if [ -e $ENV_FILE ];then
+        source $ENV_FILE
+        
+        # while read line;do
+        #     eval "$line"
+        # done < $ENV_FILE
+    fi
+}
+
+function run_procfile() {
+    :
+}
+
+function main() {
+    verify "$@"
+    load_env_file
+
+
+    
+}
+
+main "$@"
