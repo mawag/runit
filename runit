@@ -19,6 +19,25 @@ ENVFILE_CANOT_READ=5022
 PORT_ERROR=301
 
 
+# Color Print
+HIGHLIGHT='\033[1m'
+F_BLACK='\033[30;47m'
+B_BLACK='\033[40m'
+F_RED='\033[31m'
+B_RED='\033[41m'
+F_GREEN='\033[32m'
+B_GREEN='\033[42m'
+F_YELLOW='\033[33m'
+B_YELLOW='\033[43m'
+F_BLUE='\033[34m'
+B_BLUE='\033[44m'
+F_MAGENTA='\033[35m'
+B_MAGENTA='\033[45m'
+F_CYAN='\033[36m'
+B_CYAN='\033[46m'
+F_WHITE='\033[37m'
+B_WHITE='\033[47m'
+RESET='\033[0m'
 
 function usage() {
     echo "Usage: runit [-c] [-f procfile|Procfile] [-e envfile|.env]"
@@ -29,7 +48,7 @@ function usage() {
 
 function readprocfile(){
     while read line;do
-        
+        :
     done < $PROC_FILE
 }
 
@@ -70,8 +89,20 @@ function verify() {
 function log() {
     
     #time
-    bash -c "date \"$DATE_FORMAT\""
+    #bash -c "date \"$DATE_FORMAT\""
     #app name & log
+    
+    local time=`date "+%H:%M:%S"`
+    local default_app="A App,but No Name"
+    local default_msg="No message passed."
+    app=${1:-$default_app}
+    message=${2:-$default_msg}
+    color=${3:-$F_WHITE}
+
+    #echo -e "$HIGHLIGHT$color$time $app\t| $message $RESET"
+    printf "$HIGHLIGHT$color%s %-10s|" $time $app
+    echo -e "$message $RESET"
+    return
     
 }
 
@@ -97,9 +128,9 @@ function run_procfile() {
 function main() {
     verify "$@"
     load_env_file
+    log "Runit" "Start in now" $F_BLUE
+    log "Windowns" "12312 312 31231" $F_YELLOW
 
-
-    
 }
 
 main "$@"
