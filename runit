@@ -1,22 +1,36 @@
 #!/bin/bash
 
+# 处理信号
+trap "do_exit" 2 3 15
+
 #init
-RUNIT_VERSION="version 0.1"
+readonly RUNIT_VERSION="version 0.1"
 
-PROC_FILE="Procfile"
-ENV_FILE=".env"
-DEFAULT_PORT="8080"
-DATE_FORMAT='+%Y-%m-%d|%H:%M:%S'
+readonly DEFAULT_PROC="Procfile"
+readonly DEFAULT_ENV=".env"
+readonly DEFAULT_PORT="8080"
 
-#ERROR
-OPTIND_ERROR=10
-PROCFILE_NOT_FOUND=4041
-PROCFILE_CANOT_READ=5021
+readonly LOG_DATE_FORMAT='+%Y-%m-%d|%H:%M:%S'
 
-ENVFILE_NOT_FOUND=4042
-ENVFILE_CANOT_READ=5022
+# ERROR Code
+OPTIND_ERROR=1000
+CONFIG_ERROR=1001
+PORT_ERROR=3001
 
-PORT_ERROR=301
+PROCFILE_NOT_FOUND=1404
+PROCFILE_CANOT_READ=1502
+PROCFILE_ERROR=1500
+
+ENVFILE_NOT_FOUND=2404
+ENVFILE_CANOT_READ=2502
+ENVFILE_ERROR=2500
+
+
+# 校验正则
+readonly LINE_ZHUSHI='^\s*#.*$'
+readonly LINE_NONE='^\s*$'
+readonly LINE_PROC='^\s*\w+:\s*.+$'
+readonly LINE_ENV="^[A-Za-z]+\w*=(\`.*\`|\".*\"|\'.*\'|\w+)$"
 
 
 # Color Print
@@ -39,98 +53,180 @@ F_WHITE='\033[37m'
 B_WHITE='\033[47m'
 RESET='\033[0m'
 
+
+
+# 用法提示
 function usage() {
-    echo "Usage: runit [-c] [-f procfile|Procfile] [-e envfile|.env]"
-    echo "Runit Version: $RUNIT_VERSION"
+		echo "Usage: runit [-c] [-f procfile|Procfile] [-e envfile|.env]"
+		echo "Runit Version: $RUNIT_VERSION"
 }
 
 
-
-function readprocfile(){
-    while read line;do
-        :
-    done < $PROC_FILE
+# 错误输出
+function errecho() {
+	#log $1 "" "" true
+	echo -e "$F_RED$HIGHLIGHT[$(date +'%Y-%m-%d %H:%M:%S %Z')] $@$RESET" >&2
 }
 
-
-#参数处理校验
+# env & procfile 校验
 function verify() {
-    while getopts "cf:e:h" opts;
-    do
-        case $opts in
-            c)
-                echo "option:c";;
-            f)
-                echo "option:f, value $OPTARG"
-                if [ -e "$OPTARG" ];then
-                    PROC_FILE=$OPTARG;
-                else
-                    echo "Procfile Not Found"
-                    exit $PROCFILE_NOT_FOUND;
-                fi;;
-            e)
-                echo "option:e, value $OPTARG"
-                if [ -e "$OPTARG" ];then
-                    ENV_FILE=$OPTARG;
-                else
-                    echo "ENV file Not Found"
-                    exit $ENVFILE_NOT_FOUND;
-                fi;;
-            h)
-                usage;
-                exit 0;;
-            \?)
-                usagr;
-                exit $OPTIND_ERROR;;
-        esac
-    done
+	local ischeck=$1
+	local procfile=$2
+	local env_file=$3
+	local flag=true
+
+	if [ -n "${env_file}" ]; then
+		echo "env_file is ${env_file}"
+	fi
+
+	#如果存在env参数,或者默认env存在，强校验
+	if [[ -n "${env_file}" ]] || [[ -e "${DEFAULT_ENV}" ]];then
+		envfile=${env_file:-${DEFAULT_ENV}}
+		local i=0
+		while read line; do
+			let i++
+			if [[ "${line}" =~ ${LINE_ZHUSHI} ]]; then
+				${ischeck} && echo "Line ${i} is 注释"
+				continue
+			elif [[ "${line}" =~ ${LINE_NONE} ]]; then
+				${ischeck} && echo "Line ${i} is 空行"
+				continue
+			elif [[ "${line}" =~ ${LINE_ENV} ]]; then
+				${ischeck} && echo "Line ${i} is ${line}"
+			else
+				errecho "ENV File ERROR line ${i}: ${line}"
+				$flag=false
+			fi
+		done < "${envfile}"
+	fi
+	
+	#PROC file
+	if [ -e $procfile ]; then
+		run_procfile ${procfile} $ischeck
+		if [[ ${ischeck} = true ]]; then
+			echo "Proc file is ok"
+		fi
+	else
+		log "ENV File Not Found" "" "" true
+		exit $PROCFILE_NOT_FOUND
+	fi
+	
+	if [[ $flag ]]; then
+		errecho "Config cant\`t access check."
+		exit 1
+	fi
 }
 
 function log() {
-    
-    #time
-    #bash -c "date \"$DATE_FORMAT\""
-    #app name & log
-    
-    local time=`date "+%H:%M:%S"`
-    local default_app="A App,but No Name"
-    local default_msg="No message passed."
-    app=${1:-$default_app}
-    message=${2:-$default_msg}
-    color=${3:-$F_WHITE}
+	
+	#time
+	#bash -c "date \"$DATE_FORMAT\""
+	#app name & log
 
-    #echo -e "$HIGHLIGHT$color$time $app\t| $message $RESET"
-    printf "$HIGHLIGHT$color%s %-10s|" $time $app
-    echo -e "$message $RESET"
-    return
-    
+	local time=$(date "${LOG_DATE_FORMAT}")
+	local default_app="Runit"
+	local default_msg="No message passed."
+	message=${1:-$default_msg}
+	app=${2:-$default_app}
+	color=${3:-$F_WHITE}
+	iserror=${4:-false}
+
+	#echo -e "$HIGHLIGHT$color$time $app\t| $message $RESET"
+	if [[ ${iserror} = false ]]; then
+		printf "$HIGHLIGHT$color%s %-10s|" $time $app
+		echo -e "$message $RESET"
+	else
+		echo -e "$F_RED$HIGHLIGHT[$(date +'%Y-%m-%d %H:%M:%S %Z')] $@$RESET" >&2
+	fi
+	return
 }
 
 function run_command() {
-    :
+	local appname=$1
+	local appcommand=$2
+	
+	echo "Runing $appname and $appcommand"
+	local pid=$!
 }
+
+#加载env
+#参数：
+#   1：ENVFILE，不填写则自动获取ENV_FILE的值
 
 function  load_env_file() {
-    echo "Start Load ENV -> $ENV_FILE"
-    if [ -e $ENV_FILE ];then
-        source $ENV_FILE
-        
-        # while read line;do
-        #     eval "$line"
-        # done < $ENV_FILE
-    fi
+	local ENV_FILE=${1:-$ENV_FILE}
+
+	echo "Start Load ENV -> $ENV_FILE"
+
+	if [ -e $ENV_FILE ]; then
+		source $ENV_FILE > /dev/null 2>&1
+		return $?
+		# while read line;do
+		#     eval "$line"
+		# done < $ENV_FILE
+	fi
 }
 
+
 function run_procfile() {
-    :
+	local procfile=${1:-$DEFAULT_PROC}
+	local istest=${2:-false}
+	echo "Procfile load Start:${procfile}"
+
+	while read line; do
+		if [[ "${line}" =~ $ZHUSHI ]]; then
+			continue
+		elif [[ "${line}" =~ $PROCLINE ]]; then
+			if [[ ${istest} = false ]]; then
+				local appname=${line%%\:*}
+				local appcommand=${line#*\:}
+				run_command $appname $appcommand
+			fi
+		else
+			log "Proc File ERROR" "" "" true
+			exit $PROCFILE_CANOT_READ;
+		fi
+	done < "${procfile}"
+	return
 }
 
 function main() {
-    verify "$@"
-    load_env_file
-    log "Runit" "Start in now" $F_BLUE
-    log "Windowns" "12312 312 31231" $F_YELLOW
-
+	while getopts ':cf:e:h' opts; do
+		case "${opts}" in
+			c)
+				VERIFY_FLAG=true
+				;;
+			f)
+				if [ -e "$OPTARG" ];then
+						readonly PROC_FILE=$OPTARG;
+				else
+						errecho "Procfile Not Found"
+						exit $PROCFILE_NOT_FOUND;
+				fi
+				;;
+			e)
+				if [[ -e "$OPTARG" ]];then
+						readonly ENV_FILE=$OPTARG;
+				else
+						log "ENV file Not Found" "" "" true
+						exit $ENVFILE_NOT_FOUND;
+				fi
+				;;
+			h)
+				usage
+				exit 0
+				;;
+			\?)
+				errecho "invalid option"
+				usagr
+				exit $OPTIND_ERROR
+				;;
+		esac
+	done
+	#ENV_FILE=${ENV_FILE:-$DEFAULT_ENV}
+	VERIFY_FLAG=${VERIFY_FLAG:-false}
+	verify $VERIFY_FLAG ${PROC_FILE:-$DEFAULT_PROC} $ENV_FILE
+	wait
 }
 
 main "$@"
