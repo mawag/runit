@@ -1,18 +1,27 @@
 #!/bin/bash
 
 # 处理信号
-trap "do_exit" 2 3 15
+# `runit`可以接收SIGINT和SIGTERM信号
+# trap "do_exit" 2 3 15
+trap "do_exit" SIGINT SIGTERM
 
 #init
 readonly RUNIT_VERSION="version 0.1"
 
 readonly DEFAULT_PROC="Procfile"
 readonly DEFAULT_ENV=".env"
-readonly DEFAULT_PORT="8080"
+PORT="8080"
 
-readonly LOG_DATE_FORMAT='+%Y-%m-%d|%H:%M:%S'
+readonly LOG_DATE_FORMAT='+%H:%M:%S'
+
+# 记录运行的pid
+declare -a app_run_pid
+declare -a app_name
+app_run_number=0
+
 
 # ERROR Code
+EXIT_SUCCESS=0
 OPTIND_ERROR=1000
 CONFIG_ERROR=1001
 PORT_ERROR=3001
@@ -30,8 +39,8 @@ ENVFILE_ERROR=2500
 readonly LINE_ZHUSHI='^\s*#.*$'
 readonly LINE_NONE='^\s*$'
 readonly LINE_PROC='^\s*\w+:\s*.+$'
-readonly LINE_ENV="^[A-Za-z]+\w*=(\`.*\`|\".*\"|\'.*\'|\w+)$"
-
+readonly LINE_ENV="^[A-Za-z]+\w*=(\`.*\`|\".*\"|'.*'|\w+)$"
+readonly LINE_USE_PORT='^.*\$PORT$'
 
 # Color Print
 HIGHLIGHT='\033[1m'
@@ -53,7 +62,19 @@ F_WHITE='\033[37m'
 B_WHITE='\033[47m'
 RESET='\033[0m'
 
+readonly LOG_COLOR=("$F_CYAN" "$F_MAGENTA" "$F_BLUE" "$F_YELLOW" "$F_GREEN")
 
+#over
+function do_exit(){
+    echo "Will Over"
+    for app_pid in ${app_run_pid[@]} 
+    do
+        echo "kill ${app_pid}"
+        kill "${app_pid}"
+    done
+    wait
+    echo "----------End------------"
+}
 
 # 用法提示
 function usage() {
@@ -64,127 +85,177 @@ function usage() {
 
 # 错误输出
 function errecho() {
-	#log $1 "" "" true
-	echo -e "$F_RED$HIGHLIGHT[$(date +'%Y-%m-%d %H:%M:%S %Z')] $@$RESET" >&2
+    #color=${2:-$F_RED}
+	#echo -e "${color}${HIGHLIGHT}[$(date +'%Y-%m-%d %H:%M:%S %Z')] $1$RESET" >&2
+	
+	log "Runit" "$1" ${F_RED}${HIGHLIGHT}
 }
 
 # env & procfile 校验
-function verify() {
-	local ischeck=$1
-	local procfile=$2
-	local env_file=$3
-	local flag=true
 
-	if [ -n "${env_file}" ]; then
-		echo "env_file is ${env_file}"
-	fi
+function verify() {
+    local ischeck=$1
+	local procfile=${2:-$DEFAULT_PROC}
+	local env_file=$3
+	local env_isok=true
+	local proc_isok=true
+	local envfile
 
 	#如果存在env参数,或者默认env存在，强校验
 	if [[ -n "${env_file}" ]] || [[ -e "${DEFAULT_ENV}" ]];then
 		envfile=${env_file:-${DEFAULT_ENV}}
-		local i=0
+		${ischeck} && echo "ENV file Start Check"
+		
+	    # for bug in line end with 0x0a
+	    # bug info at #1
+		# 2018-01-24
+		local line_number=0
 		while read line; do
-			let i++
+			let line_number++
+		done < "${envfile}"
+		if [[ $line_number = 0 ]]; then
+			echo "" >> ${envfile}
+		fi
+		
+    	let line_number=0
+    	
+		while read line; do
+			let line_number++
 			if [[ "${line}" =~ ${LINE_ZHUSHI} ]]; then
-				${ischeck} && echo "Line ${i} is 注释"
-				continue
+				${ischeck} && echo "- Line ${line_number} is 注释"
 			elif [[ "${line}" =~ ${LINE_NONE} ]]; then
-				${ischeck} && echo "Line ${i} is 空行"
-				continue
+				${ischeck} && echo "- Line ${line_number} is 空行"
 			elif [[ "${line}" =~ ${LINE_ENV} ]]; then
-				${ischeck} && echo "Line ${i} is ${line}"
+				${ischeck} && echo "- Line ${line_number} is Env Config"
 			else
-				errecho "ENV File ERROR line ${i}: ${line}"
-				$flag=false
+				errecho "${envfile} line ${line_number} has ERROR!: ${line}"
+				env_isok=false
 			fi
 		done < "${envfile}"
+		if  ${env_isok} ; then
+    	    ${ischeck} && echo "ENV file \"${envfile}\" is ok"
+    	else
+    	    errecho "ENV file \"${envfile}\" is error"
+    	fi
 	fi
-	
+
+
 	#PROC file
-	if [ -e $procfile ]; then
-		run_procfile ${procfile} $ischeck
-		if [[ ${ischeck} = true ]]; then
-			echo "Proc file is ok"
+	if [ -e ${procfile} ]; then
+	    ${ischeck} && echo "Procfile file Start Check"
+	    
+	    # for bug in line end with 0x0a
+	    # bug info at #1
+		# 2018-01-24
+		local line_number=0
+		while read line; do
+			let line_number++
+		done < "${procfile}"
+		if [[ $line_number = 0 ]]; then
+			echo "" >> ${procfile}
 		fi
+    	let line_number=0
+    	
+    	while read line; do
+    		let line_number++
+    		if [[ "${line}" =~ ${LINE_ZHUSHI} ]]; then
+    			${ischeck} && echo "- Line ${line_number} is 注释"
+    		elif [[ "${line}" =~ ${LINE_NONE} ]]; then
+    			${ischeck} && echo "- Line ${line_number} is 空行"
+    		elif [[ "${line}" =~ ${LINE_PROC} ]]; then
+    			${ischeck} && echo "- Line ${line_number} is Proc"
+    		else
+    			echo "${procfile} Line ${line_number} is ERROR. Content is |->${line}<-|"
+    			proc_isok=false
+    		fi
+    	done < "${procfile}"
+    	if  ${proc_isok}  ; then
+    	    ${ischeck} && echo "Procfile \"${procfile}\" is ok"
+    	else
+    	    errecho "Procfile \"${procfile}\" is error"
+    	fi
 	else
-		log "ENV File Not Found" "" "" true
+		errecho "Procfile Not Found"
 		exit $PROCFILE_NOT_FOUND
 	fi
-	
-	if [[ $flag ]]; then
-		errecho "Config cant\`t access check."
-		exit 1
-	fi
+
+    if  ${env_isok}  &&  ${proc_isok}  ; then
+		${ischeck} && echo "Config access check." && exit $EXIT_SUCCESS
+	else
+		${ischeck} && errecho "Config can\`t access check."
+	    exit $CONFIG_ERROR
+    fi
 }
 
-function log() {
-	
-	#time
-	#bash -c "date \"$DATE_FORMAT\""
-	#app name & log
 
+# log输出
+# 所有输出信息
+function log() {
 	local time=$(date "${LOG_DATE_FORMAT}")
 	local default_app="Runit"
 	local default_msg="No message passed."
-	message=${1:-$default_msg}
-	app=${2:-$default_app}
+	app=${1:-$default_app}
+	message=${2:-$default_msg}
 	color=${3:-$F_WHITE}
-	iserror=${4:-false}
 
 	#echo -e "$HIGHLIGHT$color$time $app\t| $message $RESET"
-	if [[ ${iserror} = false ]]; then
-		printf "$HIGHLIGHT$color%s %-10s|" $time $app
-		echo -e "$message $RESET"
-	else
-		echo -e "$F_RED$HIGHLIGHT[$(date +'%Y-%m-%d %H:%M:%S %Z')] $@$RESET" >&2
-	fi
+	printf "$color[ %s ] %-10s| " ${time} ${app}
+	echo -e "$message $RESET"
 	return
 }
 
+
+# 运行command
+# 需添加对port的校验，如果调用自动增加,需要对子进程输出日志的处理
 function run_command() {
 	local appname=$1
 	local appcommand=$2
-	
-	echo "Runing $appname and $appcommand"
+
 	local pid=$!
+	app_run_pid[$app_run_number]=${pid}
+	app_name[$app_run_number]=$appname
+	let app_run_number++
+	local color_num
+	let color_num=$app_run_number%5
+	if [[ $appcommand =~ $LINE_USE_PORT ]]; then
+		let PORT++
+	fi
+	log  $appname "${appcommand} started with pid ${pid}" ${LOG_COLOR[$color_num]}
 }
+
 
 #加载env
 #参数：
-#   1：ENVFILE，不填写则自动获取ENV_FILE的值
-
 function  load_env_file() {
-	local ENV_FILE=${1:-$ENV_FILE}
-
-	echo "Start Load ENV -> $ENV_FILE"
-
-	if [ -e $ENV_FILE ]; then
-		source $ENV_FILE > /dev/null 2>&1
-		return $?
+	local env_file=$1
+	
+	if [[ -n "${env_file}" ]] || [[ -e "${DEFAULT_ENV}" ]];then
+		local envfile=${env_file:-${DEFAULT_ENV}}
+		source ${envfile} > /dev/null 2>&1
+		local isok=$?
+		if [[ ${isok} = 0 ]]; then
+		    log "Runit" "ENV file \"${envfile}\" load success"
+		else
+		    errecho "ENV file load ERROR"
+		fi
+		return
 		# while read line;do
 		#     eval "$line"
 		# done < $ENV_FILE
 	fi
 }
 
-
+# 处理运行Procfile部分
 function run_procfile() {
 	local procfile=${1:-$DEFAULT_PROC}
-	local istest=${2:-false}
-	echo "Procfile load Start:${procfile}"
 
+	log "Runit" "Procfile load Start:${procfile}"
 	while read line; do
-		if [[ "${line}" =~ $ZHUSHI ]]; then
-			continue
-		elif [[ "${line}" =~ $PROCLINE ]]; then
-			if [[ ${istest} = false ]]; then
-				local appname=${line%%\:*}
-				local appcommand=${line#*\:}
-				run_command $appname $appcommand
-			fi
-		else
-			log "Proc File ERROR" "" "" true
-			exit $PROCFILE_CANOT_READ;
+        if [[ "${line}" =~ $LINE_PROC ]]; then
+			local appname=${line%%\:*}
+			local appcommand=${line#*\:}
+			echo "--------------------------------Run $appname and $appcommand"
+			run_command $appname $appcommand
 		fi
 	done < "${procfile}"
 	return
@@ -208,7 +279,7 @@ function main() {
 				if [[ -e "$OPTARG" ]];then
 						readonly ENV_FILE=$OPTARG;
 				else
-						log "ENV file Not Found" "" "" true
+						errecho "ENV file Not Found"
 						exit $ENVFILE_NOT_FOUND;
 				fi
 				;;
@@ -218,7 +289,7 @@ function main() {
 				;;
 			\?)
 				errecho "invalid option"
-				usagr
+				usage
 				exit $OPTIND_ERROR
 				;;
 		esac
@@ -226,6 +297,8 @@ function main() {
 	#ENV_FILE=${ENV_FILE:-$DEFAULT_ENV}
 	VERIFY_FLAG=${VERIFY_FLAG:-false}
 	verify $VERIFY_FLAG ${PROC_FILE:-$DEFAULT_PROC} $ENV_FILE
+	load_env_file $ENV_FILE
+	run_procfile ${PROC_FILE:-$DEFAULT_PROC}
 	wait
 }
 

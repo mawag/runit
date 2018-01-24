@@ -16,10 +16,10 @@ function do_exit(){
     echo "Will Over"
     echo "app have $sum_app"
     echo "${app_id[0]} and ${app_id[1]}"
-    echo "app = ${app_id}"
-    for appid in $app_id ; do
-        echo "kill -9 $appid"
-        kill -9 $appid
+    for appid in ${app_id[@]} 
+    do
+        echo "kill ${appid}"
+        kill "${appid}"
     done
     wait
     echo "----------End------------"
@@ -27,12 +27,9 @@ function do_exit(){
 
 function sum_echo(){
     local id=$1
-
     app_id[$sum_app]=$id
     echo "Start App id= ${app_id[${sum_app}]}"
     let sum_app++
-    
-
 }
 echo "PID of this script: $$"
 echo "Father PID is: $PPID"
@@ -45,3 +42,5 @@ bash pid.sh 12 &
 sum_echo $!
 echo "--------------"
 wait
+
+echo "OOOOOOOver------------"

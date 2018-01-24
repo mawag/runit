@@ -1,6 +1,6 @@
 #!/bin/bash
 
-readonly ENVFILE_CHECK="^[A-Za-z]+\w*=(\`.*\`|\".*\"|\'.*\'|\w+)$"
+readonly ENVFILE_CHECK="^[A-Za-z]+\w*=(\`.*\`|\".*\"|'.*'|\w+)$"
 readonly ZHUSHI='^\s*#.*$'
 readonly NONELINE='^\s*$'
 
@@ -20,7 +20,6 @@ function readenv(){
 			echo "Line ${i} is ${line}"
 		else
 			echo "ERROR line ${i}: ${line}"
-			exit 1
 		fi
 		
 	done < "${envfile}"
