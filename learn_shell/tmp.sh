@@ -1,12 +1,7 @@
 #!/bin/bash
 
-LOG_COLOR=(F_CYAN F_MAGENTA F_BLUE F_YELLOW F_GREEN)
-
-
-for TMP in ${LOG_COLOR[@]} 
-do
-    echo "${TMP}"
-done
-
-ddd=9
-echo "${LOG_COLOR[((${ddd}%5))]}"
+H2G2=42
+str='echo "$FOO$H2G2 does not contain: bar"'
+str2="echo $H2G2"
+bash -c "${str}"
+bash -c "${str2}"
