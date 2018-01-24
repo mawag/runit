@@ -85,7 +85,7 @@ Usage: runit [-c] [-f procfile|Procfile] [-e envfile|.env]
 * 将一个string作为代码执行:`bash -c "${command}"`
 
 
-
+·
 ## 3 如何做题
 
 ```

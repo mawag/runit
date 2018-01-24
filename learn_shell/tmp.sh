@@ -8,6 +8,5 @@ do
     echo "${TMP}"
 done
 
-ddd=8
-let num=ddd%5
-echo "${LOG_COLOR[${let ddd%5}]}"
+ddd=9
+echo "${LOG_COLOR[((${ddd}%5))]}"

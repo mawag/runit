@@ -2,7 +2,6 @@
 
 # 处理信号
 # `runit`可以接收SIGINT和SIGTERM信号
-# trap "do_exit" 2 3 15
 trap "do_exit" SIGINT SIGTERM
 
 #init
@@ -10,15 +9,14 @@ readonly RUNIT_VERSION="version 0.1"
 
 readonly DEFAULT_PROC="Procfile"
 readonly DEFAULT_ENV=".env"
-PORT="8080"
-
 readonly LOG_DATE_FORMAT='+%H:%M:%S'
+# default
+PORT="8080"
 
 # 记录运行的pid
 declare -a app_run_pid
 declare -a app_name
 app_run_number=0
-
 
 # ERROR Code
 EXIT_SUCCESS=0
@@ -42,7 +40,7 @@ readonly LINE_PROC='^\s*\w+:\s*.+$'
 readonly LINE_ENV="^[A-Za-z]+\w*=(\`.*\`|\".*\"|'.*'|\w+)$"
 readonly LINE_USE_PORT='^.*\$PORT$'
 
-# Color Print
+# Color
 HIGHLIGHT='\033[1m'
 F_BLACK='\033[30;47m'
 B_BLACK='\033[40m'
@@ -63,6 +61,7 @@ B_WHITE='\033[47m'
 RESET='\033[0m'
 
 readonly LOG_COLOR=("$F_CYAN" "$F_MAGENTA" "$F_BLUE" "$F_YELLOW" "$F_GREEN")
+
 
 #over
 function do_exit(){
@@ -92,7 +91,6 @@ function errecho() {
 }
 
 # env & procfile 校验
-
 function verify() {
     local ischeck=$1
 	local procfile=${2:-$DEFAULT_PROC}
@@ -199,8 +197,8 @@ function log() {
 	color=${3:-$F_WHITE}
 
 	#echo -e "$HIGHLIGHT$color$time $app\t| $message $RESET"
-	printf "$color[ %s ] %-10s| " ${time} ${app}
-	echo -e "$message $RESET"
+	printf "$color[ %s ] %-10s| $RESET" ${time} ${app}
+	echo -e "$message"
 	return
 }
 
@@ -208,19 +206,26 @@ function log() {
 # 运行command
 # 需添加对port的校验，如果调用自动增加,需要对子进程输出日志的处理
 function run_command() {
-	local appname=$1
-	local appcommand=$2
+	local appname="$1"
+	local appcommand="$2"
+	local log_color="$3"
+
+	bash -c "${appcommand}" > >(
+		while read line; do
+			log "${appname}" "${line}" "${log_color}"
+		done
+	) 2>&1 &
 
 	local pid=$!
+	log "${appname}" "${appcommand} started with pid ${pid}" "${log_color}"
 	app_run_pid[$app_run_number]=${pid}
 	app_name[$app_run_number]=$appname
-	let app_run_number++
-	local color_num
-	let color_num=$app_run_number%5
+
 	if [[ $appcommand =~ $LINE_USE_PORT ]]; then
 		let PORT++
 	fi
-	log  $appname "${appcommand} started with pid ${pid}" ${LOG_COLOR[$color_num]}
+	
+	return
 }
 
 
@@ -247,25 +252,28 @@ function  load_env_file() {
 
 # 处理运行Procfile部分
 function run_procfile() {
-	local procfile=${1:-$DEFAULT_PROC}
+	local procfile="${1:-$DEFAULT_PROC}"
+	local run_app_number=0
 
 	log "Runit" "Procfile load Start:${procfile}"
 	while read line; do
         if [[ "${line}" =~ $LINE_PROC ]]; then
-			local appname=${line%%\:*}
-			local appcommand=${line#*\:}
+			local appname="${line%%:*}"
+			local appcommand="${line#*:}"
 			echo "--------------------------------Run $appname and $appcommand"
-			run_command $appname $appcommand
+			run_command "${appname}" "${appcommand}" ${LOG_COLOR[((${run_app_number}%5))]}
+			let run_app_number++
 		fi
 	done < "${procfile}"
 	return
 }
 
 function main() {
+	local verify_flag=false
 	while getopts ':cf:e:h' opts; do
 		case "${opts}" in
 			c)
-				VERIFY_FLAG=true
+				verify_flag=true
 				;;
 			f)
 				if [ -e "$OPTARG" ];then
@@ -285,20 +293,23 @@ function main() {
 				;;
 			h)
 				usage
-				exit 0
+				exit $EXIT_SUCCESS
 				;;
 			\?)
-				errecho "invalid option"
+				usage
+				exit $OPTIND_ERROR
+				;;
+			:)
+				errecho "invalid option ${OPTARG}"
 				usage
 				exit $OPTIND_ERROR
 				;;
 		esac
 	done
 	#ENV_FILE=${ENV_FILE:-$DEFAULT_ENV}
-	VERIFY_FLAG=${VERIFY_FLAG:-false}
-	verify $VERIFY_FLAG ${PROC_FILE:-$DEFAULT_PROC} $ENV_FILE
-	load_env_file $ENV_FILE
-	run_procfile ${PROC_FILE:-$DEFAULT_PROC}
+	verify "${verify_flag}" "${PROC_FILE:-$DEFAULT_PROC}" "${ENV_FILE}"
+	load_env_file "${ENV_FILE}"
+	run_procfile "${PROC_FILE:-$DEFAULT_PROC}"
 	wait
 }
 
