@@ -1,4 +1,15 @@
 #!/bin/bash
+#   
+#   Name:runit
+#   Version Number:0.1
+#   Author:Wang Bo
+#   Email:wangbo@xiyoulinux.org
+#   Description: runit 是一个应用（application）启动管理工具。通过`Procfile`文件启动相应的进程。
+#   Last_Update:2018-01-25
+
+#   已知bug：
+#		1,子进程不能完全杀死，有进程残留
+
 
 # 处理信号
 # `runit`可以接收SIGINT和SIGTERM信号
@@ -32,6 +43,8 @@ ENVFILE_NOT_FOUND=2404
 ENVFILE_CANOT_READ=2502
 ENVFILE_ERROR=2500
 
+RUN_SUCCESS=0
+RUN_ERROR=1
 
 # 校验正则
 readonly LINE_ZHUSHI='^\s*#.*$'
@@ -67,7 +80,7 @@ readonly LOG_COLOR=("$F_CYAN" "$F_MAGENTA" "$F_BLUE" "$F_YELLOW" "$F_GREEN")
 function do_exit(){
 	echo "SIGINT reveived"
 	jobs
-	local jobs_n=`jobs -p`
+	local jobs_n=$(jobs -p)
 	for app_pid in ${jobs_n[@]} 
 	do
 		echo "kill ${app_pid}"
@@ -86,8 +99,9 @@ function do_exit(){
 
 # 用法提示
 function usage() {
-		echo "Usage: runit [-c] [-f procfile|Procfile] [-e envfile|.env]"
-		echo "Runit Version: ${RUNIT_VERSION}"
+	echo "Usage: runit [-c] [-f procfile|Procfile] [-e envfile|.env]"
+	echo "Runit Version: ${RUNIT_VERSION}"
+	return "${RUN_SUCCESS}"
 }
 
 
@@ -97,6 +111,7 @@ function errecho() {
 	#echo -e "${color}${HIGHLIGHT}[$(date +'%Y-%m-%d %H:%M:%S %Z')] $1$RESET" >&2
 	
 	log "Runit" "$1" ${F_RED}${HIGHLIGHT}
+	return "${RUN_SUCCESS}"
 }
 
 # env & procfile 校验
@@ -114,7 +129,9 @@ function verify() {
 		${ischeck} && echo "ENV file Start Check"
 		
 		local line_number=0
-		local line_n=`grep -c "" ${env_file}`
+		local line_n
+		
+		line_n=$(grep -c "" ${env_file})
 		while read line; do
 			let line_number++
 		done < "${env_file}"
@@ -149,14 +166,16 @@ function verify() {
 		${ischeck} && echo "Procfile file Start Check"
 
 		local line_number=0
-		local line_n=`grep -c "" ${procfile}`
+		local line_n
+		
+		line_n=$(grep -c "" ${procfile})
 		while read line; do
 			let line_number++
 		done < "${procfile}"
 		if [[ ${line_number} -ne ${line_n} ]]; then
 			echo "" >> ${procfile}
 		fi
-		let line_number=0
+		line_number=0
 
 		while read line; do
 			let line_number++
@@ -186,7 +205,10 @@ function verify() {
 	else
 		${ischeck} && errecho "Config can\`t access check."
 		exit $CONFIG_ERROR
+		#return "${RUN_ERROR}"
 	fi
+	
+	return "${RUN_SUCCESS}"
 }
 
 
@@ -203,7 +225,7 @@ function log() {
 	#echo -e "$HIGHLIGHT$color$time $app\t| $message $RESET"
 	printf "$color[%s] %-20s| $RESET" "${time}" "${app}"
 	echo -e "$message"
-	return
+	return "${RUN_SUCCESS}"
 }
 
 
@@ -221,7 +243,7 @@ function run_command() {
 	) 2>&1 &
 
 	local pid=$!
-	log_info=${appcommand}
+	log_info=$(eval "echo ${appcommand}")
 	log "${appname}" "${log_info} started with pid ${pid}" "${log_color}"
 	#app_run_pid[$app_run_number]=${pid}
 	#let app_run_number++
@@ -230,7 +252,7 @@ function run_command() {
 	if [[ $appcommand =~ $LINE_USE_PORT ]]; then
 		let PORT++
 	fi
-	return
+	return "${RUN_SUCCESS}"
 }
 
 
@@ -247,7 +269,7 @@ function  load_env_file() {
 			fi
 		done < "${envfile}"
 
-		return
+		return "${RUN_SUCCESS}"
 		# while read line;do
 		#     eval "$line"
 		# done < $ENV_FILE
@@ -269,7 +291,7 @@ function run_procfile() {
 		fi
 	done < "${procfile}"
 	wait
-	return
+	return "${RUN_SUCCESS}"
 }
 
 function main() {
@@ -318,6 +340,7 @@ function main() {
 	load_env_file "${envfile}"
 	run_procfile "${PROC_FILE:-$DEFAULT_PROC}" "${envfile}"
 	wait
+	return "${RUN_SUCCESS}"
 }
 
 main "$@"

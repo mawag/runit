@@ -3,9 +3,10 @@
 export "H2G2=42"
 # echo $H2G2
 #eval "H2G2=42"
-# str='echo "$FOO$H2G2 does not contain: bar"'
+str='echo "$FOO$H2G2 does not contain: bar"'
 # str2="
-
+str=$(eval echo "$str")
+echo $str
 # let H2G2++
 # echo "121212 $H2G2"
 # sleep 10
@@ -32,5 +33,5 @@ export "H2G2=42"
 # 		echo "file is $line"
 # 	done)
 
-cat <(ls)
+# cat <(ls)
 
